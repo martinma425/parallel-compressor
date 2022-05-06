@@ -10,9 +10,82 @@
 
 #include <JuceHeader.h>
 
+using namespace juce;
+using namespace std;
+
+//==============================================================================
+namespace params
+{
+    enum Names
+    {
+        kThreshold,
+        kAttack,
+        kRelease,
+        kRatio,
+        kBypass,
+        kSolo,
+        
+        kInputGain,
+        kOutputGain,
+        kDryWetMix
+    };
+    inline const map<Names, String>& GetParams()
+    {
+        static map<Names, String> params = {
+            
+            {kThreshold, "Threshold"},
+            {kAttack, "Attack"},
+            {kRelease, "Release"},
+            {kRatio, "Ratio"},
+            {kBypass, "Bypass"},
+            {kSolo, "Solo"},
+            
+            {kInputGain, "Input Gain"},
+            {kOutputGain, "Output Gain"},
+            {kDryWetMix, "Dry/Wet Mix"}
+        };
+        return params;
+    }
+}
+
 //==============================================================================
 /**
 */
+struct Compressor
+{
+    AudioParameterFloat* threshold { nullptr };
+    AudioParameterFloat* attack { nullptr };
+    AudioParameterFloat* release { nullptr };
+    AudioParameterFloat* ratio { nullptr };
+    AudioParameterBool* bypass { nullptr };
+    AudioParameterBool* solo { nullptr };
+    
+    void prepare(const dsp::ProcessSpec& spec)
+    {
+        compressor.prepare(spec);
+    }
+    
+    void updateCompressorSettings()
+    {
+        compressor.setThreshold(threshold->get());
+        compressor.setAttack(attack->get());
+        compressor.setRelease(release->get());
+        compressor.setRatio(ratio->get());
+    }
+    
+    void process(AudioBuffer<float>& buffer)
+    {
+        auto ab = dsp::AudioBlock<float>(buffer);
+        auto pc = dsp::ProcessContextReplacing<float>(ab);
+        pc.isBypassed = bypass->get();
+        compressor.process(pc);
+    }
+private:
+    dsp::Compressor<float> compressor;
+};
+
+//==============================================================================
+
 class ParallelcompressorAudioProcessor  : public juce::AudioProcessor
 {
 public:
@@ -53,7 +126,32 @@ public:
     void getStateInformation (juce::MemoryBlock& destData) override;
     void setStateInformation (const void* data, int sizeInBytes) override;
 
+    static AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
+    AudioProcessorValueTreeState apvts {*this, nullptr, "Params", createParameterLayout()};
+    
 private:
+    //==============================================================================
+    AudioParameterFloat* dry_wet_mix_param_ { nullptr };
+    AudioParameterFloat* input_gain_param_ { nullptr };
+    AudioParameterFloat* output_gain_param_ { nullptr };
+    
+    //==============================================================================
+    AudioBuffer<float> dry_buffer_;
+    AudioBuffer<float> wet_buffer_;
+    dsp::Gain<float> input_gain_, output_gain_;
+    Compressor comp;
+    
+    //==============================================================================
+    template<typename B, typename G>
+    void applyGain(B& buffer, G& gain) {
+        auto ab = dsp::AudioBlock<float>(buffer);
+        auto pc = dsp::ProcessContextReplacing<float>(ab);
+        gain.process(pc);
+    }
+    
+    //==============================================================================
+    void updateState();
+    
     //==============================================================================
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ParallelcompressorAudioProcessor)
 };
