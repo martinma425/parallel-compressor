@@ -86,7 +86,7 @@ private:
 
 //==============================================================================
 
-class ParallelcompressorAudioProcessor  : public juce::AudioProcessor
+class ParallelcompressorAudioProcessor  : public foleys::MagicProcessor
 {
 public:
     //==============================================================================
@@ -104,10 +104,6 @@ public:
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
 
     //==============================================================================
-    juce::AudioProcessorEditor* createEditor() override;
-    bool hasEditor() const override;
-
-    //==============================================================================
     const juce::String getName() const override;
 
     bool acceptsMidi() const override;
@@ -123,9 +119,6 @@ public:
     void changeProgramName (int index, const juce::String& newName) override;
 
     //==============================================================================
-    void getStateInformation (juce::MemoryBlock& destData) override;
-    void setStateInformation (const void* data, int sizeInBytes) override;
-
     static AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
     AudioProcessorValueTreeState apvts {*this, nullptr, "Params", createParameterLayout()};
     
@@ -151,6 +144,10 @@ private:
     
     //==============================================================================
     void updateState();
+    
+    //==============================================================================
+    foleys::MagicLevelSource* output_meter  = nullptr;
+    foleys::MagicPlotSource* analyzer = nullptr;
     
     //==============================================================================
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ParallelcompressorAudioProcessor)

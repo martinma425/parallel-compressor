@@ -12,7 +12,7 @@
 //==============================================================================
 ParallelcompressorAudioProcessor::ParallelcompressorAudioProcessor()
 #ifndef JucePlugin_PreferredChannelConfigurations
-     : AudioProcessor (BusesProperties()
+     : MagicProcessor (BusesProperties()
                      #if ! JucePlugin_IsMidiEffect
                       #if ! JucePlugin_IsSynth
                        .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
@@ -22,6 +22,8 @@ ParallelcompressorAudioProcessor::ParallelcompressorAudioProcessor()
                        )
 #endif
 {
+    FOLEYS_SET_SOURCE_PATH (__FILE__);
+    
     using namespace params;
     const auto& params = GetParams();
     
@@ -47,6 +49,9 @@ ParallelcompressorAudioProcessor::ParallelcompressorAudioProcessor()
     SetFloatParam(input_gain_param_, Names::kInputGain);
     SetFloatParam(output_gain_param_, Names::kOutputGain);
     SetFloatParam(dry_wet_mix_param_, Names::kDryWetMix);
+    
+    output_meter  = magicState.createAndAddObject<foleys::MagicLevelSource>("output");
+    analyzer = magicState.createAndAddObject<foleys::MagicAnalyser>("input");
 }
 
 ParallelcompressorAudioProcessor::~ParallelcompressorAudioProcessor()
@@ -136,6 +141,9 @@ void ParallelcompressorAudioProcessor::prepareToPlay (double sampleRate, int sam
     
     dry_buffer_.setSize(spec.numChannels, spec.maximumBlockSize);
     wet_buffer_.setSize(spec.numChannels, spec.maximumBlockSize);
+
+    output_meter->setupSource (getTotalNumOutputChannels(), sampleRate, 500);
+    analyzer->prepareToPlay(sampleRate, samplesPerBlock);
 }
 
 void ParallelcompressorAudioProcessor::releaseResources()
@@ -194,6 +202,7 @@ void ParallelcompressorAudioProcessor::processBlock (juce::AudioBuffer<float>& b
 
     updateState();
     applyGain(buffer, input_gain_);
+    analyzer->pushSamples(buffer);
     
     // Copy over buffer data
     dry_buffer_ = buffer;
@@ -225,34 +234,12 @@ void ParallelcompressorAudioProcessor::processBlock (juce::AudioBuffer<float>& b
     }
     
     applyGain(buffer, output_gain_);
+    output_meter->pushSamples(buffer);
+    analyzer->pushSamples(buffer);
 }
+
 
 //==============================================================================
-bool ParallelcompressorAudioProcessor::hasEditor() const
-{
-    return true; // (change this to false if you choose to not supply an editor)
-}
-
-juce::AudioProcessorEditor* ParallelcompressorAudioProcessor::createEditor()
-{
-//    return new ParallelcompressorAudioProcessorEditor (*this);
-    return new juce::GenericAudioProcessorEditor(*this);
-}
-
-//==============================================================================
-void ParallelcompressorAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
-{
-    // You should use this method to store your parameters in the memory block.
-    // You could do that either as raw data, or use the XML or ValueTree classes
-    // as intermediaries to make it easy to save and load complex data.
-}
-
-void ParallelcompressorAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
-{
-    // You should use this method to restore your parameters from this memory block,
-    // whose contents will have been created by the getStateInformation() call.
-}
-
 AudioProcessorValueTreeState::ParameterLayout ParallelcompressorAudioProcessor::createParameterLayout()
 {
     using namespace params;
