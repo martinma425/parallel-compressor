@@ -22,7 +22,18 @@ ParallelcompressorAudioProcessor::ParallelcompressorAudioProcessor()
                        )
 #endif
 {
-    FOLEYS_SET_SOURCE_PATH (__FILE__);
+    // Autosave Option
+    // FOLEYS_SET_SOURCE_PATH (__FILE__);
+    
+    auto file = juce::File::getSpecialLocation (juce::File::currentApplicationFile)
+        .getChildFile ("Contents")
+        .getChildFile ("Resources")
+        .getChildFile ("magic.xml");
+
+    if (file.existsAsFile())
+        magicState.setGuiValueTree (file);
+    else
+        magicState.setGuiValueTree (BinaryData::magic_xml, BinaryData::magic_xmlSize);
     
     using namespace params;
     const auto& params = GetParams();
@@ -44,14 +55,17 @@ ParallelcompressorAudioProcessor::ParallelcompressorAudioProcessor()
     SetFloatParam(comp.release, Names::kRelease);
     SetFloatParam(comp.ratio, Names::kRatio);
     SetBoolParam(comp.bypass, Names::kBypass);
+    SetBoolParam(comp.mute, Names::kMute);
     SetBoolParam(comp.solo, Names::kSolo);
     
+    SetBoolParam(bypass_param_, Names::kPluginBypass);
     SetFloatParam(input_gain_param_, Names::kInputGain);
     SetFloatParam(output_gain_param_, Names::kOutputGain);
     SetFloatParam(dry_wet_mix_param_, Names::kDryWetMix);
     
-    output_meter  = magicState.createAndAddObject<foleys::MagicLevelSource>("output");
-    analyzer = magicState.createAndAddObject<foleys::MagicAnalyser>("input");
+    output_meter  = magicState.createAndAddObject<foleys::MagicLevelSource>("output_meter");
+    input_analyzer = magicState.createAndAddObject<foleys::MagicAnalyser>("input_analyzer");
+    output_analyzer = magicState.createAndAddObject<foleys::MagicAnalyser>("output_analyzer");
 }
 
 ParallelcompressorAudioProcessor::~ParallelcompressorAudioProcessor()
@@ -142,8 +156,9 @@ void ParallelcompressorAudioProcessor::prepareToPlay (double sampleRate, int sam
     dry_buffer_.setSize(spec.numChannels, spec.maximumBlockSize);
     wet_buffer_.setSize(spec.numChannels, spec.maximumBlockSize);
 
-    output_meter->setupSource (getTotalNumOutputChannels(), sampleRate, 500);
-    analyzer->prepareToPlay(sampleRate, samplesPerBlock);
+    output_meter->setupSource (getTotalNumOutputChannels(), sampleRate, 300);
+    input_analyzer->prepareToPlay(sampleRate, samplesPerBlock);
+    output_analyzer->prepareToPlay(sampleRate, samplesPerBlock);
 }
 
 void ParallelcompressorAudioProcessor::releaseResources()
@@ -202,7 +217,7 @@ void ParallelcompressorAudioProcessor::processBlock (juce::AudioBuffer<float>& b
 
     updateState();
     applyGain(buffer, input_gain_);
-    analyzer->pushSamples(buffer);
+    input_analyzer->pushSamples(buffer);
     
     // Copy over buffer data
     dry_buffer_ = buffer;
@@ -212,7 +227,6 @@ void ParallelcompressorAudioProcessor::processBlock (juce::AudioBuffer<float>& b
     auto num_samples = buffer.getNumSamples();
     auto num_channels = buffer.getNumChannels();
     
-    buffer.clear();
     auto SumFilterBuffers = [nc = num_channels, ns = num_samples](auto& input_buffer, const auto& src) {
         for (auto i = 0; i < nc; ++i) {
             input_buffer.addFrom(i, 0, src, i, 0, ns);
@@ -224,18 +238,33 @@ void ParallelcompressorAudioProcessor::processBlock (juce::AudioBuffer<float>& b
     wet_buffer_.applyGain(wet_mix);
     dry_buffer_.applyGain(dry_mix);
     
-    if (comp.solo->get()) {
-        SumFilterBuffers(buffer, wet_buffer_);
-    } else if (comp.bypass->get()) {
-        SumFilterBuffers(buffer, dry_buffer_);
-    } else {
-        SumFilterBuffers(buffer, wet_buffer_);
-        SumFilterBuffers(buffer, dry_buffer_);
+    if (!bypass_param_->get()) {
+        buffer.clear();
+        if (comp.solo->get()) {
+            SumFilterBuffers(buffer, wet_buffer_);
+        } else if (comp.mute->get()) {
+            SumFilterBuffers(buffer, dry_buffer_);
+        } else {
+            SumFilterBuffers(buffer, wet_buffer_);
+            SumFilterBuffers(buffer, dry_buffer_);
+        }
     }
     
+//    if (comp.solo->get()) {
+//        buffer.clear();
+//        SumFilterBuffers(buffer, wet_buffer_);
+//    } else if (comp.mute->get()) {
+//        buffer.clear();
+//        SumFilterBuffers(buffer, dry_buffer_);
+//    } else if (!bypass_param_->get()){
+//        buffer.clear();
+//        SumFilterBuffers(buffer, wet_buffer_);
+//        SumFilterBuffers(buffer, dry_buffer_);
+//    }
+    
     applyGain(buffer, output_gain_);
+    output_analyzer->pushSamples(buffer);
     output_meter->pushSamples(buffer);
-    analyzer->pushSamples(buffer);
 }
 
 
@@ -273,6 +302,12 @@ AudioProcessorValueTreeState::ParameterLayout ParallelcompressorAudioProcessor::
                                                false));
     layout.add(make_unique<AudioParameterBool>(params.at(Names::kSolo),
                                                params.at(Names::kSolo),
+                                               false));
+    layout.add(make_unique<AudioParameterBool>(params.at(Names::kMute),
+                                               params.at(Names::kMute),
+                                               false));
+    layout.add(make_unique<AudioParameterBool>(params.at(Names::kPluginBypass),
+                                               params.at(Names::kPluginBypass),
                                                false));
     layout.add(make_unique<AudioParameterFloat>(params.at(Names::kInputGain),
                                                 params.at(Names::kInputGain),

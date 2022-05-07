@@ -23,8 +23,10 @@ namespace params
         kRelease,
         kRatio,
         kBypass,
+        kMute,
         kSolo,
         
+        kPluginBypass,
         kInputGain,
         kOutputGain,
         kDryWetMix
@@ -38,8 +40,10 @@ namespace params
             {kRelease, "Release"},
             {kRatio, "Ratio"},
             {kBypass, "Bypass"},
+            {kMute, "Mute"},
             {kSolo, "Solo"},
             
+            {kPluginBypass, "Plugin Bypass"},
             {kInputGain, "Input Gain"},
             {kOutputGain, "Output Gain"},
             {kDryWetMix, "Dry/Wet Mix"}
@@ -58,6 +62,7 @@ struct Compressor
     AudioParameterFloat* release { nullptr };
     AudioParameterFloat* ratio { nullptr };
     AudioParameterBool* bypass { nullptr };
+    AudioParameterBool* mute { nullptr };
     AudioParameterBool* solo { nullptr };
     
     void prepare(const dsp::ProcessSpec& spec)
@@ -127,6 +132,7 @@ private:
     AudioParameterFloat* dry_wet_mix_param_ { nullptr };
     AudioParameterFloat* input_gain_param_ { nullptr };
     AudioParameterFloat* output_gain_param_ { nullptr };
+    AudioParameterBool* bypass_param_ { nullptr };
     
     //==============================================================================
     AudioBuffer<float> dry_buffer_;
@@ -147,7 +153,8 @@ private:
     
     //==============================================================================
     foleys::MagicLevelSource* output_meter  = nullptr;
-    foleys::MagicPlotSource* analyzer = nullptr;
+    foleys::MagicPlotSource* input_analyzer = nullptr;
+    foleys::MagicPlotSource* output_analyzer = nullptr;
     
     //==============================================================================
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ParallelcompressorAudioProcessor)

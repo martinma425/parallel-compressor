@@ -4,6 +4,9 @@
               useAppConfig="0" addUsingNamespaceToJuceHeader="1" jucerFormatVersion="1"
               companyName="tk" cppLanguageStandard="17">
   <MAINGROUP id="Vv13Hj" name="parallel-compressor">
+    <GROUP id="{8F8B75CE-D765-5D00-9868-E5E67DFA9581}" name="Resources">
+      <FILE id="kh02F5" name="magic.xml" compile="0" resource="1" file="Resources/magic.xml"/>
+    </GROUP>
     <GROUP id="{FFC4DFC9-929E-87E4-C530-5A904F8351F7}" name="Source">
       <FILE id="CJISfX" name="PluginProcessor.cpp" compile="1" resource="0"
             file="Source/PluginProcessor.cpp"/>
@@ -14,7 +17,8 @@
       <FILE id="pNuyDu" name="PluginEditor.h" compile="0" resource="0" file="Source/PluginEditor.h"/>
     </GROUP>
   </MAINGROUP>
-  <JUCEOPTIONS JUCE_STRICT_REFCOUNTEDPOINTER="1" JUCE_VST3_CAN_REPLACE_VST2="0"/>
+  <JUCEOPTIONS JUCE_STRICT_REFCOUNTEDPOINTER="1" JUCE_VST3_CAN_REPLACE_VST2="0"
+               FOLEYS_ENABLE_BINARY_DATA="1"/>
   <EXPORTFORMATS>
     <XCODE_MAC targetFolder="Builds/MacOSX">
       <CONFIGURATIONS>
