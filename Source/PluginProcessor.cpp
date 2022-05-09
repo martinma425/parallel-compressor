@@ -7,7 +7,6 @@
 */
 
 #include "PluginProcessor.h"
-#include "PluginEditor.h"
 
 //==============================================================================
 ParallelcompressorAudioProcessor::ParallelcompressorAudioProcessor()
@@ -22,7 +21,7 @@ ParallelcompressorAudioProcessor::ParallelcompressorAudioProcessor()
                        )
 #endif
 {
-    // Autosave Option
+    // Uncomment for Autosave Option
     // FOLEYS_SET_SOURCE_PATH (__FILE__);
     
     auto file = juce::File::getSpecialLocation (juce::File::currentApplicationFile)
@@ -63,7 +62,8 @@ ParallelcompressorAudioProcessor::ParallelcompressorAudioProcessor()
     SetFloatParam(output_gain_param_, Names::kOutputGain);
     SetFloatParam(dry_wet_mix_param_, Names::kDryWetMix);
     
-    output_meter  = magicState.createAndAddObject<foleys::MagicLevelSource>("output_meter");
+    input_meter = magicState.createAndAddObject<foleys::MagicLevelSource>("input_meter");
+    output_meter = magicState.createAndAddObject<foleys::MagicLevelSource>("output_meter");
     input_analyzer = magicState.createAndAddObject<foleys::MagicAnalyser>("input_analyzer");
     output_analyzer = magicState.createAndAddObject<foleys::MagicAnalyser>("output_analyzer");
 }
@@ -156,7 +156,8 @@ void ParallelcompressorAudioProcessor::prepareToPlay (double sampleRate, int sam
     dry_buffer_.setSize(spec.numChannels, spec.maximumBlockSize);
     wet_buffer_.setSize(spec.numChannels, spec.maximumBlockSize);
 
-    output_meter->setupSource (getTotalNumOutputChannels(), sampleRate, 300);
+    input_meter->setupSource(getTotalNumOutputChannels(), sampleRate, 300);
+    output_meter->setupSource(getTotalNumOutputChannels(), sampleRate, 300);
     input_analyzer->prepareToPlay(sampleRate, samplesPerBlock);
     output_analyzer->prepareToPlay(sampleRate, samplesPerBlock);
 }
@@ -215,30 +216,33 @@ void ParallelcompressorAudioProcessor::processBlock (juce::AudioBuffer<float>& b
     for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
         buffer.clear (i, 0, buffer.getNumSamples());
 
-    updateState();
-    applyGain(buffer, input_gain_);
-    input_analyzer->pushSamples(buffer);
-    
-    // Copy over buffer data
-    dry_buffer_ = buffer;
-    wet_buffer_ = buffer;
-        
-    comp.process(wet_buffer_);
-    auto num_samples = buffer.getNumSamples();
-    auto num_channels = buffer.getNumChannels();
-    
-    auto SumFilterBuffers = [nc = num_channels, ns = num_samples](auto& input_buffer, const auto& src) {
-        for (auto i = 0; i < nc; ++i) {
-            input_buffer.addFrom(i, 0, src, i, 0, ns);
-        }
-    };
-    
-    float wet_mix = dry_wet_mix_param_->get();
-    float dry_mix = 1 - wet_mix;
-    wet_buffer_.applyGain(wet_mix);
-    dry_buffer_.applyGain(dry_mix);
-    
     if (!bypass_param_->get()) {
+    
+        updateState();
+        applyGain(buffer, input_gain_);
+        input_meter->pushSamples(buffer);
+        input_analyzer->pushSamples(buffer);
+        
+        // Copy over buffer data
+        dry_buffer_ = buffer;
+        wet_buffer_ = buffer;
+            
+        comp.process(wet_buffer_);
+        
+        auto num_samples = buffer.getNumSamples();
+        auto num_channels = buffer.getNumChannels();
+        
+        auto SumFilterBuffers = [nc = num_channels, ns = num_samples](auto& input_buffer, const auto& src) {
+            for (auto i = 0; i < nc; ++i) {
+                input_buffer.addFrom(i, 0, src, i, 0, ns);
+            }
+        };
+        
+        float wet_mix = dry_wet_mix_param_->get();
+        float dry_mix = 1 - wet_mix;
+        wet_buffer_.applyGain(wet_mix);
+        dry_buffer_.applyGain(dry_mix);
+        
         buffer.clear();
         if (comp.solo->get()) {
             SumFilterBuffers(buffer, wet_buffer_);
@@ -248,23 +252,11 @@ void ParallelcompressorAudioProcessor::processBlock (juce::AudioBuffer<float>& b
             SumFilterBuffers(buffer, wet_buffer_);
             SumFilterBuffers(buffer, dry_buffer_);
         }
+        
+        applyGain(buffer, output_gain_);
+        output_meter->pushSamples(buffer);
+        output_analyzer->pushSamples(buffer);
     }
-    
-//    if (comp.solo->get()) {
-//        buffer.clear();
-//        SumFilterBuffers(buffer, wet_buffer_);
-//    } else if (comp.mute->get()) {
-//        buffer.clear();
-//        SumFilterBuffers(buffer, dry_buffer_);
-//    } else if (!bypass_param_->get()){
-//        buffer.clear();
-//        SumFilterBuffers(buffer, wet_buffer_);
-//        SumFilterBuffers(buffer, dry_buffer_);
-//    }
-    
-    applyGain(buffer, output_gain_);
-    output_analyzer->pushSamples(buffer);
-    output_meter->pushSamples(buffer);
 }
 
 
@@ -279,48 +271,53 @@ AudioProcessorValueTreeState::ParameterLayout ParallelcompressorAudioProcessor::
     auto ar_time_range = NormalisableRange<float>(1, 500, 0.1, 1);
     auto ratio_range = NormalisableRange<float>(1, 100, 0.1, 0.5);
     auto gain_range = NormalisableRange<float>(-24, 24, 0.5, 1);
-    auto dry_wet_range = Range<float>(0, 1);
+    auto dry_wet_range = NormalisableRange<float>(0, 1, 0.01, 1);
     
-    layout.add(make_unique<AudioParameterFloat>(params.at(Names::kThreshold),
-                                                params.at(Names::kThreshold),
-                                                threshold_db_range,
-                                                0));
-    layout.add(make_unique<AudioParameterFloat>(params.at(Names::kAttack),
-                                                params.at(Names::kAttack),
-                                                ar_time_range,
-                                                50));
-    layout.add(make_unique<AudioParameterFloat>(params.at(Names::kRelease),
-                                                params.at(Names::kRelease),
-                                                ar_time_range,
-                                                250));
-    layout.add(make_unique<AudioParameterFloat>(params.at(Names::kRatio),
-                                                params.at(Names::kRatio),
-                                                ratio_range,
-                                                20));
-    layout.add(make_unique<AudioParameterBool>(params.at(Names::kBypass),
-                                               params.at(Names::kBypass),
-                                               false));
-    layout.add(make_unique<AudioParameterBool>(params.at(Names::kSolo),
-                                               params.at(Names::kSolo),
-                                               false));
-    layout.add(make_unique<AudioParameterBool>(params.at(Names::kMute),
-                                               params.at(Names::kMute),
-                                               false));
-    layout.add(make_unique<AudioParameterBool>(params.at(Names::kPluginBypass),
-                                               params.at(Names::kPluginBypass),
-                                               false));
-    layout.add(make_unique<AudioParameterFloat>(params.at(Names::kInputGain),
-                                                params.at(Names::kInputGain),
-                                                gain_range,
-                                                0));
-    layout.add(make_unique<AudioParameterFloat>(params.at(Names::kOutputGain),
-                                                params.at(Names::kOutputGain),
-                                                gain_range,
-                                                0));
-    layout.add(make_unique<AudioParameterFloat>(params.at(Names::kDryWetMix),
-                                                params.at(Names::kDryWetMix),
-                                                dry_wet_range,
-                                                0.5));
+    auto comp_ctrl_group = make_unique<AudioProcessorParameterGroup>("compressor controls", "Compressor Controls", "|");
+    auto plugin_ctrl_group = make_unique<AudioProcessorParameterGroup>("plugin controls", "Plugin Controls", "|");
+    
+    comp_ctrl_group->addChild(make_unique<AudioParameterFloat>(params.at(Names::kThreshold),
+                                                              params.at(Names::kThreshold),
+                                                              threshold_db_range,
+                                                              0));
+    comp_ctrl_group->addChild(make_unique<AudioParameterFloat>(params.at(Names::kAttack),
+                                                               params.at(Names::kAttack),
+                                                               ar_time_range,
+                                                               50));
+    comp_ctrl_group->addChild(make_unique<AudioParameterFloat>(params.at(Names::kRelease),
+                                                               params.at(Names::kRelease),
+                                                               ar_time_range,
+                                                               250));
+    comp_ctrl_group->addChild(make_unique<AudioParameterFloat>(params.at(Names::kRatio),
+                                                               params.at(Names::kRatio),
+                                                               ratio_range,
+                                                               20));
+    comp_ctrl_group->addChild(make_unique<AudioParameterBool>(params.at(Names::kBypass),
+                                                              params.at(Names::kBypass),
+                                                              false));
+    comp_ctrl_group->addChild(make_unique<AudioParameterBool>(params.at(Names::kSolo),
+                                                              params.at(Names::kSolo),
+                                                              false));
+    comp_ctrl_group->addChild(make_unique<AudioParameterBool>(params.at(Names::kMute),
+                                                              params.at(Names::kMute),
+                                                              false));
+    plugin_ctrl_group->addChild(make_unique<AudioParameterBool>(params.at(Names::kPluginBypass),
+                                                                params.at(Names::kPluginBypass),
+                                                                false));
+    plugin_ctrl_group->addChild(make_unique<AudioParameterFloat>(params.at(Names::kInputGain),
+                                                                 params.at(Names::kInputGain),
+                                                                 gain_range,
+                                                                 0));
+    plugin_ctrl_group->addChild(make_unique<AudioParameterFloat>(params.at(Names::kOutputGain),
+                                                                 params.at(Names::kOutputGain),
+                                                                 gain_range,
+                                                                 0));
+    plugin_ctrl_group->addChild(make_unique<AudioParameterFloat>(params.at(Names::kDryWetMix),
+                                                                 params.at(Names::kDryWetMix),
+                                                                 dry_wet_range,
+                                                                 0.5));
+    layout.add(move(comp_ctrl_group));
+    layout.add(move(plugin_ctrl_group));
     
     return layout;
 }

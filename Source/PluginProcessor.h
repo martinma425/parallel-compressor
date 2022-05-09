@@ -152,6 +152,7 @@ private:
     void updateState();
     
     //==============================================================================
+    foleys::MagicLevelSource* input_meter  = nullptr;
     foleys::MagicLevelSource* output_meter  = nullptr;
     foleys::MagicPlotSource* input_analyzer = nullptr;
     foleys::MagicPlotSource* output_analyzer = nullptr;
