@@ -2,7 +2,7 @@
 
 <JUCERPROJECT id="jkEyAY" name="parallel-compressor" projectType="audioplug"
               useAppConfig="0" addUsingNamespaceToJuceHeader="1" jucerFormatVersion="1"
-              companyName="tk" cppLanguageStandard="17">
+              companyName="MusEng Project" cppLanguageStandard="17">
   <MAINGROUP id="Vv13Hj" name="parallel-compressor">
     <GROUP id="{8F8B75CE-D765-5D00-9868-E5E67DFA9581}" name="Resources">
       <FILE id="dpoQiD" name="magic.xml" compile="0" resource="1" file="Resources/magic.xml"/>
